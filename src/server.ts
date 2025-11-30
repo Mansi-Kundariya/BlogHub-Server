@@ -14,6 +14,7 @@ dotenv.config();
 //   });
 sequelize
   .authenticate()
+  // .sync()
   // .sync({ alter: true })
   .then(() => console.log("Database synced"))
   .catch((err) => console.error("DB Sync Error:", err));
