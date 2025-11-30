@@ -4,14 +4,6 @@ import { sequelize } from "./models";
 
 dotenv.config();
 
-// sequelize
-//   .authenticate()
-//   .then(() => {
-//     console.log("Database connected");
-//   })
-//   .catch((err) => {
-//     console.error("DB Connection Error:", err);
-//   });
 sequelize
   .authenticate()
   // .sync({ alter: true })
