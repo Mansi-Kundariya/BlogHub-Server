@@ -11,6 +11,7 @@ class User extends Model {
   public verificationTokenExpiresAt!: Date | null;
   public resetPasswordToken!: string | null;
   public resetPasswordTokenExpiresAt!: Date | null;
+  public refreshToken!: string | null;
 }
 
 User.init(
@@ -51,6 +52,10 @@ User.init(
     },
     resetPasswordTokenExpiresAt: {
       type: DataTypes.DATE,
+      allowNull: true,
+    },
+    refreshToken: {
+      type: DataTypes.STRING,
       allowNull: true,
     },
   },

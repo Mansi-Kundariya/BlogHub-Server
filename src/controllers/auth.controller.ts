@@ -2,8 +2,13 @@ import type { Request, Response } from "express";
 import { ApiResponse } from "../utils/ApiResponse";
 import { User } from "../models";
 import bcrypt from "bcrypt";
-import { generateToken } from "../utils/generateToken";
+import {
+  generateAccessToken,
+  generateRefreshToken,
+} from "../utils/generateToken";
 import { sendEmail } from "../services/emailService";
+import jwt from "jsonwebtoken";
+import { sendRefreshToken } from "../utils/sendCookie";
 // import { Op } from "sequelize";
 
 export const signup = async (req: Request, res: Response) => {
@@ -37,7 +42,6 @@ export const signup = async (req: Request, res: Response) => {
     return res.status(500).json(new ApiResponse(false, "Signup failed"));
   }
 
-  const token = generateToken(user?.id);
   await sendEmail(
     user.email,
     "Blog Hub - Verify your account",
@@ -53,7 +57,6 @@ export const signup = async (req: Request, res: Response) => {
         varificationToken: undefined,
         verificationTokenExpiresAt: undefined,
       },
-      token,
     })
   );
 };
@@ -93,7 +96,6 @@ export const verifyAccount = async (req: Request, res: Response) => {
   return res.status(200).json(
     new ApiResponse(true, "Email verified successfully!", {
       user: { ...user.toJSON(), password: undefined },
-      token: generateToken(user.id),
     })
   );
 };
@@ -127,10 +129,19 @@ export const login = async (req: Request, res: Response) => {
       .json(new ApiResponse(false, "Please verify your account"));
   }
 
+  // Generate tokens
+  const accessToken = generateAccessToken(user.id);
+  const refreshToken = generateRefreshToken(user.id);
+
+  await user.update({ refreshToken });
+
+  // Send refresh token in cookie
+  sendRefreshToken(res, refreshToken);
+
   return res.status(200).json(
     new ApiResponse(true, "Login successful", {
       user: { ...user.toJSON(), password: undefined },
-      token: generateToken(user.id),
+      accessToken,
     })
   );
 };
@@ -214,7 +225,63 @@ export const resetPassword = async (req: Request, res: Response) => {
   return res.status(200).json(
     new ApiResponse(true, "Password reset successfully!", {
       user: { ...user.toJSON(), password: undefined },
-      token: generateToken(user.id),
     })
   );
+};
+
+export const logout = async (req: Request, res: Response) => {
+  const token = req.cookies.refreshToken;
+
+  if (token) {
+    // Remove token from DB
+    await User.update(
+      { refreshToken: null },
+      { where: { refreshToken: token } }
+    );
+  }
+
+  res.clearCookie("refreshToken", {
+    path: "/api/auth/refresh-token",
+  });
+
+  return res.json({ success: true, message: "Logged out" });
+};
+
+// export const verifyToken = (req: Request, res: Response) => {
+//   try {
+//     const { token } = req.body;
+//     const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET!);
+//     return res
+//       .status(200)
+//       .json(new ApiResponse(true, "Token is valid", decoded));
+//   } catch (error: any) {
+//     return res.status(401).json(new ApiResponse(false, error.message));
+//   }
+// };
+
+export const getNewAccessToken = async (req: Request, res: Response) => {
+  const token = req.cookies.refreshToken;
+
+  if (!token) return res.status(401).json({ message: "No refresh token" });
+
+  let payload: any = null;
+
+  try {
+    payload = jwt.verify(token, process.env.JWT_REFRESH_SECRET!);
+  } catch (err) {
+    return res.status(401).json({ message: "Invalid refresh token" });
+  }
+
+  const user = await User.findByPk(payload.userId);
+  if (!user || user.refreshToken !== token) {
+    return res.status(401).json({ message: "Refresh token mismatch" });
+  }
+
+  // Generate new access token
+  const newAccessToken = generateAccessToken(user.id);
+
+  return res.json({
+    success: true,
+    accessToken: newAccessToken,
+  });
 };
